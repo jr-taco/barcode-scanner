@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>码间 · 条码读取工作台</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./style.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./"><span class="brandmark" aria-hidden="true">▥</span> 码间<span class="brand-en">BARCODE READER</span></a>
+    <div class="connection"><i></i><span id="connection-label">连接读取器…</span></div>
+  </header>
+  <main>
+    <div class="intro"><div><p class="eyebrow">双层信息读取工作台</p><h1>上传原图，读取两层信息。</h1><p class="lead">一次上传，同时查看公共条码与隐藏载荷。</p></div><span class="local-badge">公开网站 <span aria-hidden="true">↗</span></span></div>
+    <div class="workspace">
+      <section class="input-panel" aria-labelledby="input-title">
+        <div class="section-heading"><h2 id="input-title"><span class="step">01</span> 上传条码</h2><span class="quiet">原始文件</span></div>
+        <fieldset class="mode"><legend>条码来自哪里？</legend><div class="segmented"><label><input type="radio" name="mode" value="print" checked><span>打印纸样</span></label><label><input type="radio" name="mode" value="screen"><span>屏幕条码</span></label></div></fieldset>
+        <input id="file-input" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.heic,.heif,.mov,.mp4,.m4v" hidden>
+        <button id="dropzone" class="dropzone" type="button"><span class="upload-icon" aria-hidden="true">↑</span><strong>选择照片或视频</strong><span>也可以把文件拖到这里</span><small>PNG / JPEG / HEIC · MOV / MP4</small></button>
+        <div id="preview-area" class="preview-area" hidden><div class="preview-stage"><img id="preview" alt="上传条码的预览"><span id="preview-tag">原图预览</span></div><div class="file-row"><div><strong id="filename"></strong><span id="filesize"></span></div><button id="replace" class="text-button" type="button">更换文件</button></div><div class="file-actions"><button id="rotate" class="secondary-button" type="button">↶ 旋转 90°</button><button id="reread" class="primary-button" type="button">重新读取 <span aria-hidden="true">→</span></button></div></div>
+        <p class="upload-hint">让数字朝上，保留完整条高和两侧白边。短视频全段保持同一枚静态条码，最长 30 秒、最大 90 MB。</p>
+        <div class="sample-row" hidden><span>先试试看</span><button type="button" id="encoded-demo">编码样例 ↗</button><button type="button" id="clean-demo">无载荷样例 ↗</button></div>
+        <div class="privacy-note"><span aria-hidden="true">◈</span><p>文件经网站加密传输，由运营者的读取电脑处理。原文件和结果会保留，运营者可查看；其他访客不能浏览你的记录。</p></div>
+      </section>
+      <section class="results-panel" aria-labelledby="results-title">
+        <div class="section-heading"><h2 id="results-title"><span class="step">02</span> 读取结果</h2><span class="quiet" id="read-duration">等待上传</span></div>
+        <div id="activity" class="activity" role="status" aria-live="polite"><span id="activity-icon" aria-hidden="true">○</span><div><strong id="activity-title">准备好读取</strong><p id="activity-text">上传一张照片，或一段清晰的短视频。</p></div></div>
+        <article class="result-card public-card"><div class="card-top"><div><span class="card-index">PUBLIC</span><h3>公共条码</h3></div><span class="status-pill" id="public-status">待上传</span></div><div id="public-value" class="public-value placeholder">— — —</div><p id="public-description" class="card-description">这里显示普通扫码器可读取的内容。</p><button id="copy-public" class="text-button" type="button" hidden>复制公共码</button></article>
+        <article class="result-card hidden-card"><div class="card-top"><div><span class="card-index">HIDDEN</span><h3>隐藏载荷</h3></div><span class="status-pill" id="hidden-status">待上传</span></div><div id="hidden-value" class="hidden-value placeholder">等待原图</div><p id="hidden-description" class="card-description">读取本系统条码中的 56 位有效数据。</p><div id="hidden-meta" class="hidden-meta" hidden><span>十六进制 · 7 字节</span><span id="correction-count"></span></div><div id="hidden-text" class="decoded-text" hidden></div><button id="copy-hidden" class="text-button" type="button" hidden>复制隐藏候选</button><div class="candidate-note">隐藏结果仅为解码候选，存在性确认尚未校准。</div></article>
+        <article id="fusion-card" class="fusion-card" hidden><div><strong>固定五帧融合</strong><span id="fusion-status"></span></div><code id="fusion-value"></code><p id="fusion-description"></p></article>
+        <div class="result-actions"><button id="download" class="secondary-button" type="button" disabled>↓ 下载读取记录</button><span id="record-label">每次上传独立保存</span></div>
+        <details id="technical" hidden><summary>查看读取详情</summary><pre id="technical-content"></pre></details>
+      </section>
+    </div>
+    <details class="help"><summary>怎样获得更好的读取结果？ <span aria-hidden="true">＋</span></summary><div><p>请上传手机或相机导出的原文件。聊天软件压缩图、截图和普通扫码软件返回的数字可能丢失隐藏信号。照片中保留一枚完整条码，数字朝上，避免反光和模糊。</p><p>视频单帧结果取时间中点，五帧结果取中点前后固定时刻；任一帧失败都不会替换。不要在视频里切换条码或隐藏消息。</p><p>公共码可以读取常见条码；隐藏读取仅支持本系统当前 white100 原布局。公共码读到而隐藏未解出时，会分别显示。BCH 纠错成功也不能单独证明载荷有效。</p></div></details>
+    <footer><span>码间 · 公开读取工作台</span><span>100 总位含纠错 · 56 位有效数据</span></footer>
+  </main>
+</body>
+</html>
