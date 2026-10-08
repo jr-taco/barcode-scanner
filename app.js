@@ -1,3 +1,4 @@
+import {knownReference,electronicReference,compareReport} from './comparison.js';
 const SERVICE_ORIGIN="https://majian-barcode-reader-20261008.yongkang-cheng.chatgpt.site";
 let visitorKey;
 try { visitorKey=localStorage.getItem('majian-barcode-scanner-visitor'); } catch {}
@@ -12,6 +13,7 @@ function apiFetch(path,options={}) {
 let previewObjectURL=null;
 const $ = id => document.getElementById(id);
 let currentFile = null, report = null, busy = false, turns = 0, copyPublic = '', copyHidden = '';
+let referenceBusy=false, comparisonRecord=null;
 const mode = () => document.querySelector('input[name="mode"]:checked').value;
 function activity(title, text, state='') {
   $('activity').className = `activity ${state}`;
@@ -20,8 +22,23 @@ function activity(title, text, state='') {
   $('activity-icon').textContent = state === 'busy' ? '◌' : state === 'error' ? '!' : '○';
 }
 function pill(id, text, kind='') { $(id).textContent=text; $(id).className=`status-pill ${kind}`; }
+function syncControls() {
+  document.querySelectorAll('button,input,select').forEach(el=>el.disabled=busy||referenceBusy);
+  $('download').disabled=busy||referenceBusy||!report?.report_url;
+  $('download-comparison').disabled=busy||referenceBusy||!comparisonRecord;
+  $('comparison-controls').hidden=!report?.id;
+  $('comparison-wait').hidden=Boolean(report?.id);
+}
+function clearComparison() {
+  comparisonRecord=null; $('comparison-result').hidden=true;
+  $('comparison-message').className='comparison-message';
+  $('comparison-message').textContent='尚未核对';
+}
 function resetResults() {
   report=null; copyPublic=''; copyHidden='';
+  clearComparison();$('comparison-controls').hidden=true;$('comparison-wait').hidden=false;
+  $('reference-input').value='';$('expected-ean').value='';$('expected-message').value='';
+  $('reference-file').textContent='只上传参考图片，不需要重新上传拍摄文件。';
   pill('public-status','读取中'); pill('hidden-status','读取中');
   $('public-value').textContent='— — —'; $('public-value').classList.add('placeholder');
   $('public-description').textContent='定位并读取公共条码…';
@@ -33,6 +50,7 @@ function resetResults() {
 }
 async function displayResult(data) {
   report=data; $('download').disabled=!data.report_url;
+  $('comparison-controls').hidden=!data.id;$('comparison-wait').hidden=Boolean(data.id);
   $('technical').hidden=false; $('technical-content').textContent=JSON.stringify(data,null,2);
   $('record-label').textContent=data.id ? `记录 ${data.id.slice(0,8)}` : '读取记录';
   if(data.error) {
@@ -84,27 +102,31 @@ async function displayResult(data) {
     $('hidden-meta').querySelector('span').textContent='中心单帧 · 十六进制 · 7 字节';
   } else { $('hidden-meta').querySelector('span').textContent='十六进制 · 7 字节'; }
 }
+async function readUpload(file,sourceMode,rotation,onPending) {
+  const response=await apiFetch('/api/read',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Filename':encodeURIComponent(file.name),'X-Mode':sourceMode,'X-Turns':String(rotation)},body:file});
+  let data=await response.json();const deadline=Date.now()+180000;
+  while(data.status==='queued' && data.poll_url) {
+    onPending();
+    if(Date.now()>deadline)throw Error('读取仍在处理中，请保留记录编号后稍后重试。');
+    await new Promise(resolve=>setTimeout(resolve,1500));
+    data=await (await apiFetch(data.poll_url)).json();
+  }
+  return data;
+}
 async function readFile(file, resetRotation=true) {
-  if(busy || !file) return;
+  if(busy || referenceBusy || !file) return;
   if(file.size>90*1024*1024) { activity('文件太大','请选择不超过 90 MB 的照片或短视频。','error'); return; }
   currentFile=file; if(resetRotation) turns=0;
   $('dropzone').hidden=true; $('preview-area').hidden=false;
   $('filename').textContent=file.name; $('filesize').textContent=`${(file.size/1024/1024).toFixed(2)} MB · ${mode()==='print'?'打印纸样':'屏幕条码'}`;
   $('preview').hidden=true; $('preview-tag').textContent='正在生成预览';
-  busy=true; document.querySelectorAll('button,input').forEach(el=>el.disabled=true);
+  busy=true; syncControls();
   resetResults(); activity('正在读取原始文件',/\.(mov|mp4|m4v)$/i.test(file.name)?'正在解码视频，按固定时刻读取五个原帧…':'正在定位公共条码，并读取隐藏区域…','busy');
   const start=performance.now(); $('read-duration').textContent='读取中';
   try {
-    const response=await apiFetch('/api/read',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Filename':encodeURIComponent(file.name),'X-Mode':mode(),'X-Turns':String(turns)},body:file});
-    let data=await response.json();
-    const deadline=Date.now()+180000;
-    while(data.status==='queued' && data.poll_url) {
+    const data=await readUpload(file,mode(),turns,()=>{
       activity('原文件已收到，正在读取','等待读取器处理；本次记录会保留。','busy');
-      if(Date.now()>deadline) { activity('读取仍在处理中','稍后点击重新读取，或保留本次记录编号。','error'); throw new Error('queued'); }
-      await new Promise(resolve=>setTimeout(resolve,1500));
-      const pending=await apiFetch(data.poll_url); data=await pending.json();
-    }
-    document.querySelectorAll('button,input').forEach(el=>el.disabled=false);
+    });
     await displayResult(data);
     $('read-duration').textContent=`${((performance.now()-start)/1000).toFixed(1)} 秒`;
   } catch(error) {
@@ -113,9 +135,55 @@ async function readFile(file, resetRotation=true) {
     $('public-description').textContent='尚未收到公共码结果。'; $('hidden-value').textContent='读取未完成';
     $('hidden-description').textContent='请重新连接读取器。'; $('read-duration').textContent='连接中断';
   } finally {
-    busy=false; document.querySelectorAll('button,input').forEach(el=>el.disabled=false); $('download').disabled=!report?.report_url;
+    busy=false; syncControls();
   }
 }
+function showComparison(reference) {
+  comparisonRecord=compareReport(report,reference);
+  $('comparison-rows').replaceChildren();
+  for(const row of comparisonRecord.rows) {
+    const tr=document.createElement('tr');
+    const publicText=row.public_match===true?'一致':row.public_match===false?'不同':!reference.public_ean?(reference.kind==='encoded_message'?'未提供':'参考未读到'):'拍摄未读到';
+    const hiddenText=row.hidden_match===true?'一致':row.hidden_match===false?'不同':!reference.hidden_hex?'参考未解出':'拍摄未解出';
+    const conclusion=row.joint_match===true?'两层均一致':row.joint_match===false?'存在不一致':row.hidden_match===true?'隐藏一致，公共码未核对':'无法完整核对';
+    for(const [text,state] of [[row.label,null],[publicText,row.public_match],[hiddenText,row.hidden_match],[conclusion,row.joint_match]]) {
+      const td=document.createElement('td');td.textContent=text;td.className=state===true?'good':state===false?'failed':'pending';tr.append(td);
+    }
+    $('comparison-rows').append(tr);
+  }
+  $('comparison-basis').textContent=reference.kind==='electronic_decode'?`依据：原始电子码 ${reference.filename} · 读取记录 ${reference.id.slice(0,8)}`:'依据：提供的原始编码内容';
+  $('comparison-expected').textContent=`参考公共码：${reference.public_ean||'未提供或未读到'} · 参考隐藏内容：${reference.hidden_hex||'未解出'}`;
+  $('comparison-result').hidden=false;$('comparison-message').textContent='核对已完成，依据与逐项结果如下。';
+  $('download-comparison').disabled=false;
+}
+async function readReference(file) {
+  if(!file||busy||referenceBusy||!report?.id)return;
+  clearComparison();
+  if(file.size>90*1024*1024 || !/\.(png|jpe?g|webp|bmp|tiff?|heic|heif)$/i.test(file.name)) {
+    $('comparison-message').textContent='请选择不超过 90 MB 的原始电子图片，推荐无损 PNG。';return;
+  }
+  referenceBusy=true;syncControls();$('reference-file').textContent=file.name;
+  $('comparison-message').textContent='正在单独读取原始电子码…';
+  try {
+    const result=await readUpload(file,'screen',0,()=>{$('comparison-message').textContent='原始电子码已收到，等待读取结果后比对…';});
+    if(!result.id)throw Error(result.error||'未收到原始电子码的读取记录。');
+    showComparison(electronicReference(result,file.name));
+  } catch(error) {$('comparison-message').textContent=error.message||'参考读取失败，请稍后重试。';$('comparison-message').className='comparison-message error';}
+  finally {referenceBusy=false;syncControls();}
+}
+$('reference-upload').onclick=()=>{if(report?.id&&!busy&&!referenceBusy)$('reference-input').click();};
+$('reference-input').onchange=event=>{const file=event.target.files[0];event.target.value='';readReference(file);};
+$('compare-known').onclick=()=>{
+  if(busy||referenceBusy||!report?.id)return;
+  clearComparison();
+  try {showComparison(knownReference($('expected-message').value,$('expected-format').value,$('expected-ean').value));}
+  catch(error){$('comparison-message').textContent=error.message;$('comparison-message').className='comparison-message error';}
+};
+for(const id of ['expected-ean','expected-message','expected-format'])$(id).addEventListener('input',clearComparison);
+$('expected-format').onchange=()=>{
+  $('expected-message').placeholder=$('expected-format').value==='text'?'例如 NEWLINK':'例如 0123456789abcd';
+  $('expected-hint').textContent=$('expected-format').value==='text'?'本系统文本编码会在右侧补空格到 7 字节；下方显示实际核对的十六进制。内容只在当前浏览器核对。':'必须与实际写入的 7 字节一致；这里填写的内容只在当前浏览器用于比对。';
+};
 $('dropzone').onclick=()=>$('file-input').click(); $('replace').onclick=()=>$('file-input').click();
 $('file-input').onchange=event=>readFile(event.target.files[0]);
 for(const event of ['dragenter','dragover']) $('dropzone').addEventListener(event,e=>{e.preventDefault();$('dropzone').classList.add('dragging');});
@@ -133,8 +201,13 @@ $('download').onclick=async()=>{
   const blob=new Blob([JSON.stringify(report,null,2)],{type:'application/json;charset=utf-8'});
   const url=URL.createObjectURL(blob); const link=document.createElement('a'); link.href=url; link.download=`读取记录_${report.id}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
+$('download-comparison').onclick=()=>{
+  if(!comparisonRecord||comparisonRecord.capture_id!==report?.id)return;
+  const blob=new Blob([JSON.stringify({capture:report,comparison:comparisonRecord},null,2)],{type:'application/json;charset=utf-8'});
+  const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`比对记录_${report.id}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
 async function checkConnection() {
-  if(busy)return;
+  if(busy||referenceBusy)return;
   try {
     const response=await apiFetch('/api/health'); if(!response.ok)throw new Error();
     $('connection-label').textContent='读取器已连接'; $('dropzone').disabled=false;
@@ -144,4 +217,4 @@ async function checkConnection() {
     if(!currentFile)activity('读取器未连接','网站已公开；读取电脑连接后即可上传。','error');
   }
 }
-checkConnection();setInterval(checkConnection,10000);
+syncControls();checkConnection();setInterval(checkConnection,10000);

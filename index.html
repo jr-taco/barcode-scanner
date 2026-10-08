@@ -6,7 +6,7 @@
   <title>码间 · 条码读取工作台</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./style.css">
-  <script src="./app.js" defer></script>
+  <script src="./app.js" type="module"></script>
 </head>
 <body>
   <header class="topbar">
@@ -14,10 +14,10 @@
     <div class="connection"><i></i><span id="connection-label">连接读取器…</span></div>
   </header>
   <main>
-    <div class="intro"><div><p class="eyebrow">双层信息读取工作台</p><h1>上传原图，读取两层信息。</h1><p class="lead">一次上传，同时查看公共条码与隐藏载荷。</p></div><span class="local-badge">公开网站 <span aria-hidden="true">↗</span></span></div>
+    <div class="intro"><div><p class="eyebrow">双层信息读取工作台</p><h1>先读取拍摄文件，再核对原始信息。</h1><p class="lead">独立读出公共码与隐藏载荷，完成后再提供核对依据。</p></div><span class="local-badge">公开网站 <span aria-hidden="true">↗</span></span></div>
     <div class="workspace">
       <section class="input-panel" aria-labelledby="input-title">
-        <div class="section-heading"><h2 id="input-title"><span class="step">01</span> 上传条码</h2><span class="quiet">原始文件</span></div>
+        <div class="section-heading"><h2 id="input-title"><span class="step">01</span> 上传拍摄文件</h2><span class="quiet">照片或短视频</span></div>
         <fieldset class="mode"><legend>条码来自哪里？</legend><div class="segmented"><label><input type="radio" name="mode" value="print" checked><span>打印纸样</span></label><label><input type="radio" name="mode" value="screen"><span>屏幕条码</span></label></div></fieldset>
         <input id="file-input" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.heic,.heif,.mov,.mp4,.m4v" hidden>
         <button id="dropzone" class="dropzone" type="button"><span class="upload-icon" aria-hidden="true">↑</span><strong>选择照片或视频</strong><span>也可以把文件拖到这里</span><small>PNG / JPEG / HEIC · MOV / MP4</small></button>
@@ -36,6 +36,19 @@
         <details id="technical" hidden><summary>查看读取详情</summary><pre id="technical-content"></pre></details>
       </section>
     </div>
+    <section class="comparison-panel" aria-labelledby="comparison-title">
+      <div class="section-heading"><h2 id="comparison-title"><span class="step">03</span> 核对原始信息</h2><span class="quiet">读取完成后进行</span></div>
+      <p id="comparison-wait" class="comparison-intro">先上传拍摄文件。读取完成后，可上传对应的原始电子码，或填写当初 encode 的内容。</p>
+      <div id="comparison-controls" hidden>
+        <p class="comparison-intro">拍摄读取结果已保存。任选一种依据核对；参考资料不会参与拍摄文件的定位、纠错或选帧。</p>
+        <div class="reference-options">
+          <div class="reference-option"><h3>上传原始电子码</h3><p>选择拍摄对象对应的原始电子图片，推荐无损 PNG。它会作为另一条记录单独读取。</p><input id="reference-input" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.heic,.heif" hidden><button id="reference-upload" class="secondary-button" type="button">选择原始电子码</button><p id="reference-file" class="reference-hint">只上传参考图片，不需要重新上传拍摄文件。</p></div>
+          <div class="reference-option"><h3>填写已知编码内容</h3><p>从生成码时保存的原始记录填写，不要从上方读取结果复制。</p><label for="expected-ean">原始公共码（EAN-13，可选）</label><input id="expected-ean" type="text" inputmode="numeric" maxlength="13" placeholder="例如 1234567890128"><label for="expected-format">隐藏内容格式</label><select id="expected-format"><option value="hex">十六进制 · 14 位</option><option value="text">原始文本 · 最多 7 字节</option></select><label for="expected-message">当初写入的隐藏内容</label><input id="expected-message" type="text" autocomplete="off" placeholder="例如 0123456789abcd"><p id="expected-hint" class="reference-hint">必须与实际写入的 7 字节一致；这里填写的内容只在当前浏览器用于比对。</p><button id="compare-known" class="secondary-button" type="button">核对已知编码内容</button></div>
+        </div>
+      </div>
+      <p id="comparison-message" class="comparison-message" role="status" aria-live="polite">尚未核对</p>
+      <div id="comparison-result" hidden><p id="comparison-basis" class="reference-hint"></p><div class="comparison-table-wrap"><table class="comparison-table"><thead><tr><th>读取结果</th><th>公共码</th><th>隐藏消息</th><th>结论</th></tr></thead><tbody id="comparison-rows"></tbody></table></div><p id="comparison-expected" class="reference-hint"></p><p class="reference-hint">电子码比对检验两次读取是否一致；已知编码内容比对检验是否与提供的原消息匹配。两者都不代表认证、防伪或标准质量通过。</p><button id="download-comparison" class="secondary-button" type="button">↓ 下载比对记录</button></div>
+    </section>
     <details class="help"><summary>怎样获得更好的读取结果？ <span aria-hidden="true">＋</span></summary><div><p>请上传手机或相机导出的原文件。聊天软件压缩图、截图和普通扫码软件返回的数字可能丢失隐藏信号。照片中保留一枚完整条码，数字朝上，避免反光和模糊。</p><p>视频单帧结果取时间中点，五帧结果取中点前后固定时刻；任一帧失败都不会替换。不要在视频里切换条码或隐藏消息。</p><p>公共码可以读取常见条码；隐藏读取仅支持本系统当前 white100 原布局。公共码读到而隐藏未解出时，会分别显示。BCH 纠错成功也不能单独证明载荷有效。</p></div></details>
     <footer><span>码间 · 公开读取工作台</span><span>100 总位含纠错 · 56 位有效数据</span></footer>
   </main>
