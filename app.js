@@ -1,4 +1,4 @@
-import {knownReference,electronicReference,compareReport} from './comparison.js';
+import {knownReference,electronicReference,compareReport} from './comparison.js?v=soft-p4-20261009';
 const SERVICE_ORIGIN="https://majian-barcode-reader-20261008.yongkang-cheng.chatgpt.site";
 let visitorKey;
 try { visitorKey=localStorage.getItem('majian-barcode-scanner-visitor'); } catch {}
@@ -28,6 +28,7 @@ function syncControls() {
   $('download-comparison').disabled=busy||referenceBusy||!comparisonRecord;
   $('comparison-controls').hidden=!report?.id;
   $('comparison-wait').hidden=Boolean(report?.id);
+  $('expected-message').disabled=busy||referenceBusy||$('expected-format').value==='blank';
 }
 function clearComparison() {
   comparisonRecord=null; $('comparison-result').hidden=true;
@@ -44,7 +45,7 @@ function resetResults() {
   $('public-description').textContent='定位并读取公共条码…';
   $('hidden-value').textContent='正在读取'; $('hidden-value').classList.add('placeholder');
   $('hidden-description').textContent='保留原始像素，读取隐藏区域…';
-  for(const id of ['copy-public','copy-hidden','hidden-meta','hidden-text','fusion-card','technical']) $(id).hidden=true;
+  for(const id of ['copy-public','copy-hidden','hidden-meta','hidden-text','fusion-card','soft-card','technical']) $(id).hidden=true;
   $('download').disabled=true;
   $('record-label').textContent='正在保存本次记录';
 }
@@ -101,6 +102,13 @@ async function displayResult(data) {
     $('fusion-description').textContent=fusion.message;
     $('hidden-meta').querySelector('span').textContent='中心单帧 · 十六进制 · 7 字节';
   } else { $('hidden-meta').querySelector('span').textContent='十六进制 · 7 字节'; }
+  if(data.soft_fusion) {
+    const soft=data.soft_fusion;$('soft-card').hidden=false;
+    $('soft-status').textContent=soft.hidden?.bch_ok?'候选 · 未确认':soft.hidden?'未解出':'不可测';
+    $('soft-value').textContent=soft.hidden?.data_hex||'—';
+    const methods={hard5:'保留硬五帧结果',frame_consensus:'帧消息一致性',chase:'软判决补救',soft_tie:'并列，弃答',soft_no_candidate:'无合法候选',incomplete:'帧不完整'};
+    $('soft-description').textContent=`${methods[soft.method]||''}。${soft.message}`;
+  }
 }
 async function readUpload(file,sourceMode,rotation,onPending) {
   const response=await apiFetch('/api/read',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Filename':encodeURIComponent(file.name),'X-Mode':sourceMode,'X-Turns':String(rotation)},body:file});
@@ -144,15 +152,16 @@ function showComparison(reference) {
   for(const row of comparisonRecord.rows) {
     const tr=document.createElement('tr');
     const publicText=row.public_match===true?'一致':row.public_match===false?'不同':!reference.public_ean?(reference.kind==='encoded_message'?'未提供':'参考未读到'):'拍摄未读到';
-    const hiddenText=row.hidden_match===true?'一致':row.hidden_match===false?'不同':!reference.hidden_hex?'参考未解出':'拍摄未解出';
-    const conclusion=row.joint_match===true?'两层均一致':row.joint_match===false?'存在不一致':row.hidden_match===true?'隐藏一致，公共码未核对':'无法完整核对';
+    const blank=reference.kind==='encoded_blank';
+    const hiddenText=blank?(row.hidden_match===true?'本次无候选':row.hidden_match===false?'空白出现候选':'不可测'):row.hidden_match===true?'一致':row.hidden_match===false?'不同':!reference.hidden_hex?'参考未解出':'拍摄未解出';
+    const conclusion=blank?(row.hidden_match===false?'空白误读候选':row.joint_match===true?'公共码一致，本次无候选':row.public_match===false?'公共码不同':'无法完整核对'):row.joint_match===true?'两层均一致':row.joint_match===false?'存在不一致':row.hidden_match===true?'隐藏一致，公共码未核对':'无法完整核对';
     for(const [text,state] of [[row.label,null],[publicText,row.public_match],[hiddenText,row.hidden_match],[conclusion,row.joint_match]]) {
       const td=document.createElement('td');td.textContent=text;td.className=state===true?'good':state===false?'failed':'pending';tr.append(td);
     }
     $('comparison-rows').append(tr);
   }
   $('comparison-basis').textContent=reference.kind==='electronic_decode'?`依据：原始电子码 ${reference.filename} · 读取记录 ${reference.id.slice(0,8)}`:'依据：提供的原始编码内容';
-  $('comparison-expected').textContent=`参考公共码：${reference.public_ean||'未提供或未读到'} · 参考隐藏内容：${reference.hidden_hex||'未解出'}`;
+  $('comparison-expected').textContent=`参考公共码：${reference.public_ean||'未提供或未读到'} · 参考隐藏内容：${reference.kind==='encoded_blank'?'无载荷（单次无候选不代表拒识已标定）':reference.hidden_hex||'未解出'}`;
   $('comparison-result').hidden=false;$('comparison-message').textContent='核对已完成，依据与逐项结果如下。';
   $('download-comparison').disabled=false;
 }
@@ -181,8 +190,9 @@ $('compare-known').onclick=()=>{
 };
 for(const id of ['expected-ean','expected-message','expected-format'])$(id).addEventListener('input',clearComparison);
 $('expected-format').onchange=()=>{
+  syncControls();
   $('expected-message').placeholder=$('expected-format').value==='text'?'例如 NEWLINK':'例如 0123456789abcd';
-  $('expected-hint').textContent=$('expected-format').value==='text'?'本系统文本编码会在右侧补空格到 7 字节；下方显示实际核对的十六进制。内容只在当前浏览器核对。':'必须与实际写入的 7 字节一致；这里填写的内容只在当前浏览器用于比对。';
+  $('expected-hint').textContent=$('expected-format').value==='blank'?'用于编码记录明确为无载荷的对照。出现任何候选均标记为空白误读；不可测不会算通过。':$('expected-format').value==='text'?'本系统文本编码会在右侧补空格到 7 字节；下方显示实际核对的十六进制。内容只在当前浏览器核对。':'必须与实际写入的 7 字节一致；这里填写的内容只在当前浏览器用于比对。';
 };
 $('dropzone').onclick=()=>$('file-input').click(); $('replace').onclick=()=>$('file-input').click();
 $('file-input').onchange=event=>readFile(event.target.files[0]);

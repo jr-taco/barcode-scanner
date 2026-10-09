@@ -13,7 +13,9 @@ export function knownReference(value,format,ean='') {
     if((10-sum%10)%10!==Number(ean[12]))throw Error('公共码的 EAN-13 校验位不正确，请核对原始记录。');
   }
   let hex;
-  if(format==='hex'){
+  if(format==='blank'){
+    return {kind:'encoded_blank',public_ean:ean||null,hidden_hex:null,input_format:format,input_value:null,padding:null};
+  }else if(format==='hex'){
     hex=value.replace(/\s+/g,'').replace(/^0x/i,'').toLowerCase();
     if(!payloadPattern.test(hex))throw Error('隐藏内容需为 14 位十六进制，也就是实际写入的 7 字节。');
   }else if(format==='text'){
@@ -32,15 +34,16 @@ export function electronicReference(report,filename) {
 
 export function compareReport(capture,reference) {
   if(!capture?.id || capture.status==='queued')throw Error('请先完成拍摄文件的读取。');
-  if(!reference || !['encoded_message','electronic_decode'].includes(reference.kind))throw Error('缺少核对依据。');
+  if(!reference || !['encoded_message','encoded_blank','electronic_decode'].includes(reference.kind))throw Error('缺少核对依据。');
   const row=(label,observation)=>{
     const actualEAN=observation?.public_ean||publicEAN(observation),actualHidden=hiddenHex(observation);
     const public_match=reference.public_ean && actualEAN?reference.public_ean===actualEAN:null;
-    const hidden_match=reference.hidden_hex && actualHidden?reference.hidden_hex===actualHidden:null;
+    const hidden_match=reference.kind==='encoded_blank'?(actualHidden?false:observation?.hidden?.bch_ok===false?true:null):reference.hidden_hex && actualHidden?reference.hidden_hex===actualHidden:null;
     const joint_match=public_match===false||hidden_match===false?false:public_match===true&&hidden_match===true?true:null;
     return {label,actual_public_ean:actualEAN,actual_hidden_hex:actualHidden,public_match,hidden_match,joint_match};
   };
   const rows=[row('中心单帧',capture.center)];
-  if(capture.fusion)rows.push(row('固定五帧',capture.fusion));
+  if(capture.fusion)rows.push(row('固定五帧 · 硬判决',capture.fusion));
+  if(capture.soft_fusion)rows.push(row('固定五帧 · 新软判决',capture.soft_fusion));
   return {capture_id:capture.id,compared_at:new Date().toISOString(),basis:reference.kind,reference,rows,accepted:false};
 }

@@ -6,7 +6,7 @@
   <title>码间 · 条码读取工作台</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./style.css">
-  <script src="./app.js" type="module"></script>
+  <script src="./app.js?v=soft-p4-20261009" type="module"></script>
 </head>
 <body>
   <header class="topbar">
@@ -31,7 +31,8 @@
         <div id="activity" class="activity" role="status" aria-live="polite"><span id="activity-icon" aria-hidden="true">○</span><div><strong id="activity-title">准备好读取</strong><p id="activity-text">上传一张照片，或一段清晰的短视频。</p></div></div>
         <article class="result-card public-card"><div class="card-top"><div><span class="card-index">PUBLIC</span><h3>公共条码</h3></div><span class="status-pill" id="public-status">待上传</span></div><div id="public-value" class="public-value placeholder">— — —</div><p id="public-description" class="card-description">这里显示普通扫码器可读取的内容。</p><button id="copy-public" class="text-button" type="button" hidden>复制公共码</button></article>
         <article class="result-card hidden-card"><div class="card-top"><div><span class="card-index">HIDDEN</span><h3>隐藏载荷</h3></div><span class="status-pill" id="hidden-status">待上传</span></div><div id="hidden-value" class="hidden-value placeholder">等待原图</div><p id="hidden-description" class="card-description">读取本系统条码中的 56 位有效数据。</p><div id="hidden-meta" class="hidden-meta" hidden><span>十六进制 · 7 字节</span><span id="correction-count"></span></div><div id="hidden-text" class="decoded-text" hidden></div><button id="copy-hidden" class="text-button" type="button" hidden>复制隐藏候选</button><div class="candidate-note">隐藏结果仅为解码候选，存在性确认尚未校准。</div></article>
-        <article id="fusion-card" class="fusion-card" hidden><div><strong>固定五帧融合</strong><span id="fusion-status"></span></div><code id="fusion-value"></code><p id="fusion-description"></p></article>
+        <article id="fusion-card" class="fusion-card" hidden><div><strong>固定五帧 · 原硬判决</strong><span id="fusion-status"></span></div><code id="fusion-value"></code><p id="fusion-description"></p></article>
+        <article id="soft-card" class="fusion-card" hidden><div><strong>固定五帧 · 新软判决</strong><span id="soft-status"></span></div><code id="soft-value"></code><p id="soft-description"></p></article>
         <div class="result-actions"><button id="download" class="secondary-button" type="button" disabled>↓ 下载读取记录</button><span id="record-label">每次上传独立保存</span></div>
         <details id="technical" hidden><summary>查看读取详情</summary><pre id="technical-content"></pre></details>
       </section>
@@ -43,13 +44,13 @@
         <p class="comparison-intro">拍摄读取结果已保存。任选一种依据核对；参考资料不会参与拍摄文件的定位、纠错或选帧。</p>
         <div class="reference-options">
           <div class="reference-option"><h3>上传原始电子码</h3><p>选择拍摄对象对应的原始电子图片，推荐无损 PNG。它会作为另一条记录单独读取。</p><input id="reference-input" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.heic,.heif" hidden><button id="reference-upload" class="secondary-button" type="button">选择原始电子码</button><p id="reference-file" class="reference-hint">只上传参考图片，不需要重新上传拍摄文件。</p></div>
-          <div class="reference-option"><h3>填写已知编码内容</h3><p>从生成码时保存的原始记录填写，不要从上方读取结果复制。</p><label for="expected-ean">原始公共码（EAN-13，可选）</label><input id="expected-ean" type="text" inputmode="numeric" maxlength="13" placeholder="例如 1234567890128"><label for="expected-format">隐藏内容格式</label><select id="expected-format"><option value="hex">十六进制 · 14 位</option><option value="text">原始文本 · 最多 7 字节</option></select><label for="expected-message">当初写入的隐藏内容</label><input id="expected-message" type="text" autocomplete="off" placeholder="例如 0123456789abcd"><p id="expected-hint" class="reference-hint">必须与实际写入的 7 字节一致；这里填写的内容只在当前浏览器用于比对。</p><button id="compare-known" class="secondary-button" type="button">核对已知编码内容</button></div>
+          <div class="reference-option"><h3>填写已知编码内容</h3><p>从生成码时保存的原始记录填写，不要从上方读取结果复制。</p><label for="expected-ean">原始公共码（EAN-13，可选）</label><input id="expected-ean" type="text" inputmode="numeric" maxlength="13" placeholder="例如 1234567890128"><label for="expected-format">隐藏内容格式</label><select id="expected-format"><option value="hex">十六进制 · 14 位</option><option value="text">原始文本 · 最多 7 字节</option><option value="blank">无隐藏载荷 · 空白对照</option></select><label for="expected-message">当初写入的隐藏内容</label><input id="expected-message" type="text" autocomplete="off" placeholder="例如 0123456789abcd"><p id="expected-hint" class="reference-hint">必须与实际写入的 7 字节一致；这里填写的内容只在当前浏览器用于比对。</p><button id="compare-known" class="secondary-button" type="button">核对已知编码内容</button></div>
         </div>
       </div>
       <p id="comparison-message" class="comparison-message" role="status" aria-live="polite">尚未核对</p>
       <div id="comparison-result" hidden><p id="comparison-basis" class="reference-hint"></p><div class="comparison-table-wrap"><table class="comparison-table"><thead><tr><th>读取结果</th><th>公共码</th><th>隐藏消息</th><th>结论</th></tr></thead><tbody id="comparison-rows"></tbody></table></div><p id="comparison-expected" class="reference-hint"></p><p class="reference-hint">电子码比对检验两次读取是否一致；已知编码内容比对检验是否与提供的原消息匹配。两者都不代表认证、防伪或标准质量通过。</p><button id="download-comparison" class="secondary-button" type="button">↓ 下载比对记录</button></div>
     </section>
-    <details class="help"><summary>怎样获得更好的读取结果？ <span aria-hidden="true">＋</span></summary><div><p>请上传手机或相机导出的原文件。聊天软件压缩图、截图和普通扫码软件返回的数字可能丢失隐藏信号。照片中保留一枚完整条码，数字朝上，避免反光和模糊。</p><p>视频单帧结果取时间中点，五帧结果取中点前后固定时刻；任一帧失败都不会替换。不要在视频里切换条码或隐藏消息。</p><p>公共码可以读取常见条码；隐藏读取仅支持本系统当前 white100 原布局。公共码读到而隐藏未解出时，会分别显示。BCH 纠错成功也不能单独证明载荷有效。</p></div></details>
+    <details class="help"><summary>怎样获得更好的读取结果？ <span aria-hidden="true">＋</span></summary><div><p>请上传手机或相机导出的原文件。聊天软件压缩图、截图和普通扫码软件返回的数字可能丢失隐藏信号。照片中保留一枚完整条码，数字朝上，避免反光和模糊。</p><p>打印纸样建议每枚码录 3–5 秒稳定视频。中心单帧、固定五帧硬判决和新软判决分开显示；后两项使用同一组原帧，任一帧失败都不会替换。不要在视频里切换条码或隐藏消息。照片和屏幕模式保留原读取规则。</p><p>公共码可以读取常见条码；隐藏读取仅支持本系统当前 white100 原布局。软判决可能把空白读成候选，仍需核对原始编码记录。公共码读到而隐藏未解出时，会分别显示。BCH 纠错成功也不能单独证明载荷有效。</p></div></details>
     <footer><span>码间 · 公开读取工作台</span><span>100 总位含纠错 · 56 位有效数据</span></footer>
   </main>
 </body>
