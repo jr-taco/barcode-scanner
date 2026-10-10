@@ -1,5 +1,5 @@
-import {knownReference,electronicReference,compareReport} from './comparison.js?v=soft-p4-20261009';
-import {initialize,readFileLocally} from './assets/decoder.js?v=browser-20261009';
+import {knownReference,electronicReference,compareReport} from './comparison.js?v=frames-20261010';
+import {initialize,readFileLocally} from './assets/decoder.js?v=frames-20261010';
 let ready=false;
 const $ = id => document.getElementById(id);
 let currentFile = null, report = null, busy = false, turns = 0, copyPublic = '', copyHidden = '';
@@ -36,7 +36,7 @@ function resetResults() {
   $('public-description').textContent='定位并读取公共条码…';
   $('hidden-value').textContent='正在读取'; $('hidden-value').classList.add('placeholder');
   $('hidden-description').textContent='保留原始像素，读取隐藏区域…';
-  for(const id of ['copy-public','copy-hidden','hidden-meta','hidden-text','fusion-card','soft-card','technical']) $(id).hidden=true;
+  for(const id of ['copy-public','copy-hidden','hidden-meta','hidden-text','fusion-card','soft-card','improved-card','frames-card','technical']) $(id).hidden=true;
   $('download').disabled=true;
   $('record-label').textContent='正在生成本次记录';
 }
@@ -95,6 +95,31 @@ async function displayResult(data) {
     const methods={hard5:'保留硬五帧结果',frame_consensus:'帧消息一致性',chase:'软判决补救',soft_tie:'并列，弃答',soft_no_candidate:'无合法候选',incomplete:'帧不完整'};
     $('soft-description').textContent=`${methods[soft.method]||''}。${soft.message}`;
   }
+  if(data.improved_fusion){
+    const result=data.improved_fusion;$('improved-card').hidden=false;
+    $('improved-status').textContent=result.method==='conflict'?'冲突 · 弃答':result.hidden?.bch_ok?'候选 · 未确认':result.hidden?'未解出':'不可测';
+    $('improved-value').textContent=result.hidden?.data_hex||'—';$('improved-description').textContent=result.message;
+    $('path-results').replaceChildren();
+    const names={horizontal_gap:'当前读取',public_gap:'直接定位',horizontal_detrended:'亮度补偿①',public_detrended:'亮度补偿②'};
+    for(const [name,path] of Object.entries(result.paths)){const p=document.createElement('p');p.textContent=`${names[name]}：${path.soft5.candidate_data_hex||'未解出'}`;$('path-results').append(p);}
+  }
+  displayFrames(data);
+}
+function displayFrames(data){
+  const rows=data.observations||[];if(data.source.kind!=='video')return;
+  $('frames-card').hidden=false;$('frame-rows').replaceChildren();
+  const messages=new Set();let candidateFrames=0;
+  rows.forEach((row,i)=>{
+    const tr=document.createElement('tr'),time=data.source.selected_times_seconds?.[i],frame=data.source.frame_indices?.[i];
+    const label=`${i+1}${i===Math.floor(rows.length/2)?' · 中心':''}${Number.isFinite(time)?` / ${time.toFixed(3)} 秒`:''}${Number.isInteger(frame)?` / 原帧 ${frame}`:''}`;
+    const paths=row.sampling_paths;const hidden=paths?[paths.horizontal_gap?.hidden,paths.public_gap?.hidden,paths.horizontal_detrended?.hidden,paths.public_detrended?.hidden]:[row.hidden,null,null,null];
+    if(hidden.some(h=>h?.bch_ok))candidateFrames++;
+    for(const h of hidden)if(h?.bch_ok)messages.add(h.data_hex);
+    const values=[label,(row.public||[]).map(r=>r.ean||r.text).join(' / ')||row.prediction?.public_ean||'未读到',...hidden.map(h=>h?.bch_ok?`${h.data_hex}${Number.isInteger(h.corrected_bits)?` · 纠正 ${h.corrected_bits} 位`:''}`:h?'未解出':'不可测')];
+    for(const value of values){const td=document.createElement('td');td.textContent=value;tr.append(td);}
+    $('frame-rows').append(tr);
+  });
+  $('frames-summary').textContent=`${rows.length} 帧中 ${candidateFrames} 帧出现候选。${messages.size>1?'存在不同消息，请查看冲突并核对原编码。':messages.size?'候选仍未经原编码确认。':'本次五帧未形成单帧候选。'}`;
 }
 async function readFile(file, resetRotation=true) {
   if(!ready || busy || referenceBusy || !file) return;
@@ -126,8 +151,8 @@ function showComparison(reference) {
     const tr=document.createElement('tr');
     const publicText=row.public_match===true?'一致':row.public_match===false?'不同':!reference.public_ean?(reference.kind==='encoded_message'?'未提供':'参考未读到'):'拍摄未读到';
     const blank=reference.kind==='encoded_blank';
-    const hiddenText=blank?(row.hidden_match===true?'本次无候选':row.hidden_match===false?'空白出现候选':'不可测'):row.hidden_match===true?'一致':row.hidden_match===false?'不同':!reference.hidden_hex?'参考未解出':'拍摄未解出';
-    const conclusion=blank?(row.hidden_match===false?'空白误读候选':row.joint_match===true?'公共码一致，本次无候选':row.public_match===false?'公共码不同':'无法完整核对'):row.joint_match===true?'两层均一致':row.joint_match===false?'存在不一致':row.hidden_match===true?'隐藏一致，公共码未核对':'无法完整核对';
+    const hiddenText=blank?(row.hidden_match===true?'本次无候选':row.hidden_match===false?'空白出现候选':'不可测'):row.conflict?'候选冲突':row.hidden_match===true?'一致':row.hidden_match===false?'不同':!reference.hidden_hex?'参考未解出':'拍摄未解出';
+    const conclusion=blank?(row.hidden_match===false?'空白误读候选':row.joint_match===true?'公共码一致，本次无候选':row.public_match===false?'公共码不同':'无法完整核对'):row.conflict?'冲突 · 弃答':row.joint_match===true?'两层均一致':row.joint_match===false?'存在不一致':row.hidden_match===true?'隐藏一致，公共码未核对':'无法完整核对';
     for(const [text,state] of [[row.label,null],[publicText,row.public_match],[hiddenText,row.hidden_match],[conclusion,row.joint_match]]) {
       const td=document.createElement('td');td.textContent=text;td.className=state===true?'good':state===false?'failed':'pending';tr.append(td);
     }

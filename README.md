@@ -6,4 +6,6 @@ Photos, playable short videos and references are processed in the visitor browse
 
 The existing white100 original layout is supported. Print videos retain center, hard-five and the fixed p=4 cascade separately. Known messages, known blanks and independently read original electronic images are compared only after capture decoding. All hidden outputs remain unconfirmed candidates (accepted=false); blank rejection is uncalibrated.
 
+2026-10-10: the complete five sampled frame results, actual times and correction counts are displayed. Additional public-only sampling paths and polynomial illumination compensation are diagnostic outputs; their cross-path agreement is separate from the preserved original results. Conflicting/isolated messages are retained, and known-blank comparison marks any candidate evidence as a false candidate even when cross-path selection abstains. This release does not claim stable recovery or calibrated blank rejection. Human-readable decoder source is in `assets/reader-source/`.
+
 Build/verification sources are maintained in the local browser_embed_20261009 development directory. Third-party notices accompany assets. Model assets are frozen existing delivery parameters; the independent fusion research branch is not part of this website update.

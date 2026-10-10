@@ -38,12 +38,22 @@ export function compareReport(capture,reference) {
   const row=(label,observation)=>{
     const actualEAN=observation?.public_ean||publicEAN(observation),actualHidden=hiddenHex(observation);
     const public_match=reference.public_ean && actualEAN?reference.public_ean===actualEAN:null;
-    const hidden_match=reference.kind==='encoded_blank'?(actualHidden?false:observation?.hidden?.bch_ok===false?true:null):reference.hidden_hex && actualHidden?reference.hidden_hex===actualHidden:null;
+    const candidateSeen=Boolean(actualHidden||observation?.evidence?.length);
+    const hidden_match=reference.kind==='encoded_blank'?(candidateSeen?false:observation?.hidden?.bch_ok===false?true:null):reference.hidden_hex && actualHidden?reference.hidden_hex===actualHidden:null;
     const joint_match=public_match===false||hidden_match===false?false:public_match===true&&hidden_match===true?true:null;
     return {label,actual_public_ean:actualEAN,actual_hidden_hex:actualHidden,public_match,hidden_match,joint_match};
   };
   const rows=[row('中心单帧',capture.center)];
   if(capture.fusion)rows.push(row('固定五帧 · 硬判决',capture.fusion));
   if(capture.soft_fusion)rows.push(row('固定五帧 · 新软判决',capture.soft_fusion));
+  if(capture.improved_fusion){
+    const improved=row('多路径交叉核对',capture.improved_fusion);
+    if(capture.improved_fusion.method==='conflict'){if(reference.kind!=='encoded_blank'){improved.hidden_match=null;improved.joint_match=null;}improved.conflict=true;}
+    rows.push(improved);
+  }
+  if(capture.source?.kind==='video')for(const [i,observation] of (capture.observations||[]).entries()){
+    rows.push(row(`第 ${i+1} 帧 · 当前读取`,observation));
+    for(const [name,path] of Object.entries(observation.sampling_paths||{}))if(name!=='horizontal_gap')rows.push(row(`第 ${i+1} 帧 · ${{public_gap:'直接定位',horizontal_detrended:'亮度补偿①',public_detrended:'亮度补偿②'}[name]||name}`,{...path,public_ean:observation.prediction?.public_ean}));
+  }
   return {capture_id:capture.id,compared_at:new Date().toISOString(),basis:reference.kind,reference,rows,accepted:false};
 }
