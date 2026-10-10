@@ -4,6 +4,7 @@ import {readBarcodes,prepareZXingModule} from 'zxing-wasm/reader';
 import {publicCase,projectRows,featuresFromRows,neuralLogits,decodeBits} from './codec.js';
 import {MatScope,rectify,sample,missingSupport,horizontalMap} from './geometry.js';
 import {samplingPaths,crossPath} from './sampling.js';
+import {nativeTimeline,nativeCanvas} from './media.js';
 let assetsPromise;
 async function loadJSON(path){const response=await fetch(new URL(path,import.meta.url));if(!response.ok)throw Error('读取组件下载失败，请刷新重试。');return response.json();}
 export function configureBarcode(overrides){prepareZXingModule({overrides});}
@@ -17,8 +18,16 @@ export async function initialize(){
   return {cv,covers,weights};
 }
 
+function publicLocatorPixels(imageData){
+  // The frozen Python ZXing numpy interface interprets its 3 channels as BGR.
+  // Reproduce that public-only view; hidden sampling still uses original RGB.
+  const data=new Uint8ClampedArray(imageData.data);
+  for(let i=0;i<data.length;i+=4){const r=data[i];data[i]=data[i+2];data[i+2]=r;}
+  return {width:imageData.width,height:imageData.height,data};
+}
+
 export async function observePixels(cv,imageData,mode,covers,weights){
-  const reads=await readBarcodes(imageData,{tryHarder:true,tryRotate:true,tryInvert:true,maxNumberOfSymbols:8});
+  const reads=await readBarcodes(publicLocatorPixels(imageData),{tryHarder:true,tryRotate:true,tryInvert:true,maxNumberOfSymbols:8});
   const detections=reads.map(d=>({text:d.text,format:d.format==='EAN13'?'EAN-13':d.format==='UPCA'?'UPC-A':d.format,ean:d.format==='EAN13'?d.text:d.format==='UPCA'&&d.text.length===12?'0'+d.text:null,corners:[d.position.topLeft,d.position.topRight,d.position.bottomRight,d.position.bottomLeft].map(p=>[p.x,p.y])}));
   const row={public:detections,status:'PUBLIC_NOT_FOUND',hidden:null,prediction:null,accepted:false};
   if(!detections.length){row.message='没有读到公共条码。请上传清晰原图，保留完整条码和数字。';return row;}
@@ -31,10 +40,20 @@ export async function observePixels(cv,imageData,mode,covers,weights){
       const xs=corners.map(p=>p[0]),ys=corners.map(p=>p[1]),span=Math.max(...xs)-Math.min(...xs),height=span*280/380,center=ys.reduce((a,b)=>a+b,0)/4;
       const x0=Math.max(0,Math.floor(Math.min(...xs)-.25*span)),x1=Math.min(rgb.cols,Math.ceil(Math.max(...xs)+.25*span)),y0=Math.max(0,Math.floor(center-height)),y1=Math.min(rgb.rows,Math.ceil(center+height));
       if(x1<=x0||y1<=y0)throw new Error('条码裁框为空');
-      const roi=s.keep(rgb.roi(new cv.Rect(x0,y0,x1-x0,y1-y0)));crop=s.keep(roi.clone());
+      // Embind's clone() clones the handle and keeps the ROI's parent stride.
+      // copyTo creates packed pixels for the data-array geometry operations.
+      const roi=s.keep(rgb.roi(new cv.Rect(x0,y0,x1-x0,y1-y0)));crop=s.keep(new cv.Mat());roi.copyTo(crop);
       row.public_crop=[x0,y0,x1,y1];
     }else row.public_crop=[0,0,rgb.cols,rgb.rows];
-    const [x0,y0]=row.public_crop,localCorners=corners.map(([x,y])=>[x-x0,y-y0]);
+    const [x0,y0]=row.public_crop;let localCorners=corners.map(([x,y])=>[x-x0,y-y0]);
+    if(mode==='print'){
+      // The Python receiver detects public corners again inside this crop.
+      const localRGBA=s.keep(new cv.Mat());cv.cvtColor(crop,localRGBA,cv.COLOR_RGB2RGBA);
+      const localReads=await readBarcodes(publicLocatorPixels({width:crop.cols,height:crop.rows,data:localRGBA.data}),{tryHarder:true,tryRotate:true,tryInvert:true,maxNumberOfSymbols:8});
+      const localEAN=localReads.filter(d=>d.format==='EAN13'||d.format==='UPCA');
+      if(localEAN.length!==1||(localEAN[0].format==='UPCA'?'0'+localEAN[0].text:localEAN[0].text)!==detection.ean)throw new Error('条码裁框内的公共码不一致');
+      const p=localEAN[0].position;localCorners=[p.topLeft,p.topRight,p.bottomRight,p.bottomLeft].map(p=>[p.x,p.y]);
+    }
     const {H,evidence}=rectify(cv,crop,detection.ean,localCorners,mode),c=publicCase(detection.ean,covers);
     row.geometry=evidence;row.homography=H;
     const missing=missingSupport(cv,crop,H,c);
@@ -69,24 +88,31 @@ async function imageCanvas(file,turns){
     return rotatedCanvas(img,img.naturalWidth,img.naturalHeight,turns);
   }finally{URL.revokeObjectURL(url);}
 }
-async function videoCanvases(file,turns){
+export async function videoCanvases(file,turns,onFrame=null){
   const url=URL.createObjectURL(file),video=document.createElement('video');video.muted=true;video.playsInline=true;video.preload='auto';
   try{
     await new Promise((resolve,reject)=>{video.onloadedmetadata=resolve;video.onerror=()=>reject(new Error('此浏览器不支持该视频编码。请上传 PNG/JPEG 原图或浏览器可播放的 MP4。'));video.src=url;});
     if(!Number.isFinite(video.duration)||video.duration<.5||video.duration>30)throw new Error('请上传0.5至30秒的同一枚条码短视频。');
     if(!video.requestVideoFrameCallback)throw new Error('此浏览器不能提供视频帧时间。请上传照片，或使用较新的浏览器。');
     if(video.videoWidth*video.videoHeight>40_000_000)throw new Error('视频分辨率过高。');
-    const targets=[-.25,-.125,0,.125,.25].map(offset=>video.duration/2+offset),canvases=[],times=[];
+    let timeline=null,timelineError=null;try{timeline=nativeTimeline(await file.arrayBuffer());}catch(e){timelineError=e.message;}
+    const targets=timeline?.targets??[-.25,-.125,0,.125,.25].map(offset=>video.duration/2+offset),canvases=[],times=[],pixelPaths=[];
     for(const target of targets){
       const time=await new Promise((resolve,reject)=>{
         let callback;const timer=setTimeout(()=>{if(callback)video.cancelVideoFrameCallback(callback);reject(new Error('视频帧解码超时，请上传照片或兼容的MP4。'));},10000);
         callback=video.requestVideoFrameCallback((_,metadata)=>{clearTimeout(timer);resolve(metadata.mediaTime);});
-        video.onerror=()=>{clearTimeout(timer);reject(new Error('视频画面解码失败。'));};video.currentTime=target;
+        video.onerror=()=>{clearTimeout(timer);reject(new Error('视频画面解码失败。'));};video.currentTime=timeline?timeline.seek[canvases.length]:target;
       });
-      canvases.push(rotatedCanvas(video,video.videoWidth,video.videoHeight,turns));times.push(time);
+      if(onFrame)await onFrame(video,time,canvases.length);
+      if(timeline&&Math.abs(time-timeline.selected[canvases.length])>1e-5)throw Error('浏览器没有提供声明的固定原帧；未替换失败帧。');
+      let canvas,pixelPath;
+      try{if(!timeline)throw Error(timelineError);canvas=await nativeCanvas(video,timeline,rotatedCanvas);if(turns)canvas=rotatedCanvas(canvas,canvas.width,canvas.height,turns);pixelPath='native_yuv_ffmpeg_table_v1';}
+      catch(e){canvas=rotatedCanvas(video,video.videoWidth,video.videoHeight,turns);pixelPath='browser_canvas_fallback: '+e.message;}
+      canvases.push(canvas);times.push(time);pixelPaths.push(pixelPath);
     }
     return {canvases,source:{kind:'video',duration_seconds:video.duration,selected_frames:5,target_times_seconds:targets,selected_times_seconds:times,
-      policy:'浏览器解码：请求视频中点前后固定五个时刻，记录实际提供的帧时间；不声称离线PyAV最近PTS规则完全等价。'}};
+      frame_indices:timeline?.indices??null,decoded_frames:timeline?.times.length??null,native_last_time_seconds:timeline?.times.at(-1)??null,pixel_paths:pixelPaths,
+      policy:timeline?'原MOV/MP4 PTS中点±0.25/0.125/0秒，最近原帧、平局较早；验证实际帧时间。':'浏览器时刻回退：'+timelineError}};
   }finally{video.removeAttribute('src');video.load();URL.revokeObjectURL(url);}
 }
 
@@ -101,6 +127,6 @@ export async function readFileLocally(file,mode,turns=0){
   const middle=canvases[Math.floor(canvases.length/2)];
   const improved_fusion=isVideo&&mode==='print'?crossPath(observations,source.selected_times_seconds):null;
   return {id:crypto.randomUUID().replaceAll('-',''),filename:file.name,size_bytes:file.size,created_at:new Date().toISOString(),source,mode,center,fusion,soft_fusion,improved_fusion,observations,
-    preview_url:previewFrom(middle),accepted:false,total_bits:100,data_bits:56,processing:'VISITOR_BROWSER_ONLY',reader_version:'browser_white100_sampling_consensus_v3',
+    preview_url:previewFrom(middle),accepted:false,total_bits:100,data_bits:56,processing:'VISITOR_BROWSER_ONLY',reader_version:'browser_white100_native_media_v4',
     note:'照片和视频在访客浏览器处理，不发送至服务器。读取仅限本系统原布局；BCH候选不等于存在性确认。'};
 }

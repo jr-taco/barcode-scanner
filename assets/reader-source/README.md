@@ -1,7 +1,11 @@
 # Browser reader source
 
-This is the source for `../decoder.js`, revision `browser_white100_sampling_consensus_v3`. It preserves the frozen neural parameters and the original print center/hard-five/p=4 outputs. Four fixed sampling paths are exposed separately: public geometry with/without horizontal calibration, each with/without quadratic illumination regression. Conflicting messages abstain; isolated candidates remain visible. These paths use the same five frames and are not independent presence evidence.
+Source of `../decoder.js`, revision `browser_white100_native_media_v4`. Frozen neural parameters, original print center/hard-five/p=4 and cross-path candidate rules are retained.
 
-Build with esbuild (browser ES2022, bundled ESM) from `engine.js` to `../decoder.js`, using zxing-wasm/reader. OpenCV is loaded by the page; ZXing, BCH WASM, covers and weights remain in the parent assets directory. `bch-core.js` uses the native BCH implementation/source and GPL notices in `../bch-source/`. The source contains no capture files or expected messages.
+Print ROI pixels are copied with `copyTo` to obtain packed rows; OpenCV/Embind handle `clone()` does not make the ROI data contiguous. Public ZXing detection uses the frozen Python BGR interpretation for the public-only view, and repeats detection inside the crop. Hidden sampling retains original RGB.
 
-The browser's media decoding is different from Python/PyAV. Cross-platform recovery and blank rejection remain uncalibrated. Compare all candidates with independently provided encoding records.
+Supported ordinary MOV/MP4 uses native stts/ctts presentation times, nearest original PTS with earlier tie, and exact quarter-turn tkhd matrices. Actual provided frame times must match; failed frames are not replaced. Native limited-range NV12/I420 planes use the FFmpeg-compatible RGB table convention. Unsupported container edits/pixel formats/browser APIs retain a separately recorded browser-canvas fallback, which does not claim pixel parity.
+
+Build from `engine.js` with esbuild (browser ES2022 bundled ESM) and zxing-wasm/reader. OpenCV loads from the page; ZXing/BCH WASM, covers and frozen weights remain in parent assets. See MEDIA_NOTICE.md and COPYING.MEDIA.LGPL-2.1.txt for the new conversion, and ../bch-source/ for the existing GPL component.
+
+Same video frames and multiple sampling paths are not independent presence evidence. Recovery remains an unconfirmed candidate (accepted=false), and blank rejection/invisibility/standard quality remain separate. No captures, fixtures or expected messages are included in this source.

@@ -224,3 +224,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+Native YUV conversion (media.js): FFmpeg-compatible integer table arithmetic, LGPL-2.1-or-later. Copyright Konstantin Shishkov (2009), Michael Niedermayer and FFmpeg contributors. Source and notice: assets/reader-source/media.js and MEDIA_NOTICE.md; full license: assets/reader-source/COPYING.MEDIA.LGPL-2.1.txt.

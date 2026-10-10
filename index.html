@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>码间 · 条码读取工作台</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./style.css?v=frames-20261010">
+  <link rel="stylesheet" href="./style.css?v=parity2-20261010">
   <script src="./assets/opencv.js"></script>
-  <script src="./app.js?v=frames-20261010" type="module"></script>
+  <script src="./app.js?v=parity2-20261010" type="module"></script>
 </head>
 <body>
   <header class="topbar">
@@ -31,7 +31,7 @@
         <div class="section-heading"><h2 id="results-title"><span class="step">02</span> 读取结果</h2><span class="quiet" id="read-duration">等待上传</span></div>
         <div id="activity" class="activity" role="status" aria-live="polite"><span id="activity-icon" aria-hidden="true">○</span><div><strong id="activity-title">准备好读取</strong><p id="activity-text">上传一张照片，或一段清晰的短视频。</p></div></div>
         <article class="result-card public-card"><div class="card-top"><div><span class="card-index">PUBLIC</span><h3>公共条码</h3></div><span class="status-pill" id="public-status">待上传</span></div><div id="public-value" class="public-value placeholder">— — —</div><p id="public-description" class="card-description">这里显示普通扫码器可读取的内容。</p><button id="copy-public" class="text-button" type="button" hidden>复制公共码</button></article>
-        <article class="result-card hidden-card"><div class="card-top"><div><span class="card-index">HIDDEN</span><h3>隐藏载荷</h3></div><span class="status-pill" id="hidden-status">待上传</span></div><div id="hidden-value" class="hidden-value placeholder">等待原图</div><p id="hidden-description" class="card-description">读取本系统条码中的 56 位有效数据。</p><div id="hidden-meta" class="hidden-meta" hidden><span>十六进制 · 7 字节</span><span id="correction-count"></span></div><div id="hidden-text" class="decoded-text" hidden></div><button id="copy-hidden" class="text-button" type="button" hidden>复制隐藏候选</button><div class="candidate-note">隐藏结果仅为解码候选，存在性确认尚未校准。</div></article>
+        <article class="result-card hidden-card"><div class="card-top"><div><span class="card-index">HIDDEN</span><h3 id="hidden-title">隐藏载荷</h3></div><span class="status-pill" id="hidden-status">待上传</span></div><div id="hidden-value" class="hidden-value placeholder">等待原图</div><p id="hidden-description" class="card-description">读取本系统条码中的 56 位有效数据。</p><div id="hidden-meta" class="hidden-meta" hidden><span>十六进制 · 7 字节</span><span id="correction-count"></span></div><div id="hidden-text" class="decoded-text" hidden></div><button id="copy-hidden" class="text-button" type="button" hidden>复制隐藏候选</button><div class="candidate-note">隐藏结果仅为解码候选，存在性确认尚未校准。</div></article>
         <article id="fusion-card" class="fusion-card" hidden><div><strong>固定五帧 · 原硬判决</strong><span id="fusion-status"></span></div><code id="fusion-value"></code><p id="fusion-description"></p></article>
         <article id="soft-card" class="fusion-card" hidden><div><strong>固定五帧 · 新软判决</strong><span id="soft-status"></span></div><code id="soft-value"></code><p id="soft-description"></p></article>
         <article id="improved-card" class="fusion-card" hidden><div><strong>多路径交叉核对</strong><span id="improved-status"></span></div><code id="improved-value"></code><p id="improved-description"></p><p>这是附加的诊断结果。各路径使用同一组五帧，空白误读尚未校准；仍须核对原始编码。</p><details id="path-details"><summary>查看各路径融合候选</summary><div id="path-results"></div></details></article>

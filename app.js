@@ -1,5 +1,5 @@
-import {knownReference,electronicReference,compareReport} from './comparison.js?v=frames-20261010';
-import {initialize,readFileLocally} from './assets/decoder.js?v=frames-20261010';
+import {knownReference,electronicReference,compareReport} from './comparison.js?v=parity2-20261010';
+import {initialize,readFileLocally} from './assets/decoder.js?v=parity2-20261010';
 let ready=false;
 const $ = id => document.getElementById(id);
 let currentFile = null, report = null, busy = false, turns = 0, copyPublic = '', copyHidden = '';
@@ -55,6 +55,7 @@ async function displayResult(data) {
   if(data.preview_url){$('preview').src=data.preview_url;$('preview').hidden=false;}
   $('preview-tag').textContent=data.source.kind==='video' ? '视频中心帧 · 原像素读取' : '原图预览';
   const center=data.center, reads=center.public;
+  $('hidden-title').textContent=data.source.kind==='video'?'隐藏载荷 · 中心单帧':'隐藏载荷';
   if(reads.length) {
     copyPublic=reads.map(d=>d.ean || d.text).join('\n');
     $('public-value').textContent=copyPublic; $('public-value').classList.remove('placeholder');
@@ -81,6 +82,10 @@ async function displayResult(data) {
     $('hidden-description').textContent=center.message;
   }
   activity(reads.length ? '本次读取完成' : '未读到公共条码',center.message,reads.length ? '' : 'error');
+  if(data.source.kind==='video'&&!hidden?.bch_ok){
+    const candidate=[['多路径交叉核对',data.improved_fusion],['固定五帧软判决',data.soft_fusion],['固定五帧硬判决',data.fusion]].find(([,r])=>r?.hidden?.bch_ok);
+    if(candidate)activity('本次读取完成',`${candidate[0]}读出隐藏候选；中心单帧未解出。请与原始编码核对。`);
+  }
   if(data.fusion) {
     const fusion=data.fusion; $('fusion-card').hidden=false;
     $('fusion-status').textContent=fusion.hidden?.bch_ok ? '候选 · 未确认' : fusion.hidden ? '未解出' : '不可测';
