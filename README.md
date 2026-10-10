@@ -1,13 +1,9 @@
 # Barcode Scanner
 
-Public photo and short-video upload interface. Files are read by the operator’s connected reader computer; no model, decoding implementation, or research samples are distributed in this repository.
+Public browser-only reader at https://jr-taco.github.io/barcode-scanner/ . The user explicitly authorized publishing the decoder and frozen parameters on 2026-10-09. OpenCV and ZXing assets, carrier layout and frozen weights are included under assets/. No operator computer connection is required.
 
-Public and hidden results are shown separately. Hidden values are unconfirmed candidates. Original uploads and reports are retained privately by the service.
+Photos, playable short videos and references are processed in the visitor browser; files and results are not uploaded or automatically retained. Download reports before closing. HEIC and video codec availability depends on the browser. Browser video sampling requests the fixed middle ±0.25/±0.125/0 second frames and records actual media times; this is distinct from the Python nearest-PTS media adapter. Missing/duplicate frames never get replaced.
 
-Read the captured photo or video first. After its result is complete, either upload the corresponding original electronic barcode for a separate read, or enter the original encoded message and optionally its EAN-13. Center-frame and fixed-five-frame results are compared separately. Electronic-image agreement and agreement with a user-provided encoded message are labeled distinctly.
+The existing white100 original layout is supported. Print videos retain center, hard-five and the fixed p=4 cascade separately. Known messages, known blanks and independently read original electronic images are compared only after capture decoding. All hidden outputs remain unconfirmed candidates (accepted=false); blank rejection is uncalibrated.
 
-Known message input stays in the visitor’s browser and is never sent to the image reader. A comparison download includes the original captured report, its reference, and the comparison; it does not replace either decoded result or grant authentication or quality approval. Text references use the current encoder’s UTF-8 representation padded with spaces to seven bytes, displayed explicitly as hex.
-
-Print videos additionally show a fixed-five-frame development cascade: preserve the hard-five-frame candidate, then use agreement between at least two decoded frames without competing messages, then the existing fixed p=4 soft decision. The same five original frames are used throughout, with no replacement or reference-assisted selection. Photos and screen mode keep their existing behavior. The hard result and the new candidate are retained and compared separately.
-
-The operator's private reader performs this calculation; no decoder implementation or printing sample is published here. All candidates remain unconfirmed because blank rejection is uncalibrated. An explicitly known blank control can be compared after reading: any decoded candidate is marked as a blank false candidate, and unmeasurable data never passes. A single blank without a candidate does not establish calibrated rejection.
+Build/verification sources are maintained in the local browser_embed_20261009 development directory. Third-party notices accompany assets. Model assets are frozen existing delivery parameters; the independent fusion research branch is not part of this website update.

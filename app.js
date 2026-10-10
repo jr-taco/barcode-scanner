@@ -1,16 +1,6 @@
 import {knownReference,electronicReference,compareReport} from './comparison.js?v=soft-p4-20261009';
-const SERVICE_ORIGIN="https://majian-barcode-reader-20261008.yongkang-cheng.chatgpt.site";
-let visitorKey;
-try { visitorKey=localStorage.getItem('majian-barcode-scanner-visitor'); } catch {}
-if(!/^[a-f0-9]{64}$/.test(visitorKey || '')) {
-  visitorKey=Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
-  try { localStorage.setItem('majian-barcode-scanner-visitor',visitorKey); } catch {}
-}
-function apiFetch(path,options={}) {
-  if(!/^\/(?:api\/(?:health|read(?:\/[a-f0-9]{32})?)|results\/[a-f0-9]{32}\/(?:report\.json|preview\.jpg))$/.test(path))throw Error('Invalid service path');
-  return fetch(SERVICE_ORIGIN+path,{...options,credentials:'omit',headers:{...(options.headers||{}),Authorization:'Visitor '+visitorKey}});
-}
-let previewObjectURL=null;
+import {initialize,readFileLocally} from './assets/decoder.js?v=browser-20261009';
+let ready=false;
 const $ = id => document.getElementById(id);
 let currentFile = null, report = null, busy = false, turns = 0, copyPublic = '', copyHidden = '';
 let referenceBusy=false, comparisonRecord=null;
@@ -24,10 +14,11 @@ function activity(title, text, state='') {
 function pill(id, text, kind='') { $(id).textContent=text; $(id).className=`status-pill ${kind}`; }
 function syncControls() {
   document.querySelectorAll('button,input,select').forEach(el=>el.disabled=busy||referenceBusy);
-  $('download').disabled=busy||referenceBusy||!report?.report_url;
+  $('download').disabled=busy||referenceBusy||!report?.id;
   $('download-comparison').disabled=busy||referenceBusy||!comparisonRecord;
   $('comparison-controls').hidden=!report?.id;
   $('comparison-wait').hidden=Boolean(report?.id);
+  $('dropzone').disabled=busy||referenceBusy||!ready;
   $('expected-message').disabled=busy||referenceBusy||$('expected-format').value==='blank';
 }
 function clearComparison() {
@@ -47,10 +38,10 @@ function resetResults() {
   $('hidden-description').textContent='保留原始像素，读取隐藏区域…';
   for(const id of ['copy-public','copy-hidden','hidden-meta','hidden-text','fusion-card','soft-card','technical']) $(id).hidden=true;
   $('download').disabled=true;
-  $('record-label').textContent='正在保存本次记录';
+  $('record-label').textContent='正在生成本次记录';
 }
 async function displayResult(data) {
-  report=data; $('download').disabled=!data.report_url;
+  report=data; $('download').disabled=!data.id;
   $('comparison-controls').hidden=!data.id;$('comparison-wait').hidden=Boolean(data.id);
   $('technical').hidden=false; $('technical-content').textContent=JSON.stringify(data,null,2);
   $('record-label').textContent=data.id ? `记录 ${data.id.slice(0,8)}` : '读取记录';
@@ -61,12 +52,7 @@ async function displayResult(data) {
     $('hidden-value').textContent='未能读取'; $('hidden-description').textContent=data.error;
     return;
   }
-  if(data.preview_url) {
-    try {
-      const response=await apiFetch(data.preview_url);
-      if(response.ok){if(previewObjectURL)URL.revokeObjectURL(previewObjectURL);previewObjectURL=URL.createObjectURL(await response.blob());$('preview').src=previewObjectURL;$('preview').hidden=false;}
-    } catch {}
-  }
+  if(data.preview_url){$('preview').src=data.preview_url;$('preview').hidden=false;}
   $('preview-tag').textContent=data.source.kind==='video' ? '视频中心帧 · 原像素读取' : '原图预览';
   const center=data.center, reads=center.public;
   if(reads.length) {
@@ -110,19 +96,8 @@ async function displayResult(data) {
     $('soft-description').textContent=`${methods[soft.method]||''}。${soft.message}`;
   }
 }
-async function readUpload(file,sourceMode,rotation,onPending) {
-  const response=await apiFetch('/api/read',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Filename':encodeURIComponent(file.name),'X-Mode':sourceMode,'X-Turns':String(rotation)},body:file});
-  let data=await response.json();const deadline=Date.now()+180000;
-  while(data.status==='queued' && data.poll_url) {
-    onPending();
-    if(Date.now()>deadline)throw Error('读取仍在处理中，请保留记录编号后稍后重试。');
-    await new Promise(resolve=>setTimeout(resolve,1500));
-    data=await (await apiFetch(data.poll_url)).json();
-  }
-  return data;
-}
 async function readFile(file, resetRotation=true) {
-  if(busy || referenceBusy || !file) return;
+  if(!ready || busy || referenceBusy || !file) return;
   if(file.size>90*1024*1024) { activity('文件太大','请选择不超过 90 MB 的照片或短视频。','error'); return; }
   currentFile=file; if(resetRotation) turns=0;
   $('dropzone').hidden=true; $('preview-area').hidden=false;
@@ -132,16 +107,14 @@ async function readFile(file, resetRotation=true) {
   resetResults(); activity('正在读取原始文件',/\.(mov|mp4|m4v)$/i.test(file.name)?'正在解码视频，按固定时刻读取五个原帧…':'正在定位公共条码，并读取隐藏区域…','busy');
   const start=performance.now(); $('read-duration').textContent='读取中';
   try {
-    const data=await readUpload(file,mode(),turns,()=>{
-      activity('原文件已收到，正在读取','等待读取器处理；本次记录会保留。','busy');
-    });
+    const data=await readFileLocally(file,mode(),turns);
     await displayResult(data);
     $('read-duration').textContent=`${((performance.now()-start)/1000).toFixed(1)} 秒`;
   } catch(error) {
-    activity('连接中断','读取服务暂时未连接，请稍后再试。','error');
+    activity('文件未能读取',error.message||'请尝试清晰原图或兼容的视频。','error');
     pill('public-status','未完成','failed'); pill('hidden-status','未完成','failed');
     $('public-description').textContent='尚未收到公共码结果。'; $('hidden-value').textContent='读取未完成';
-    $('hidden-description').textContent='请重新连接读取器。'; $('read-duration').textContent='连接中断';
+    $('hidden-description').textContent=error.message||'文件读取失败'; $('read-duration').textContent='未完成';
   } finally {
     busy=false; syncControls();
   }
@@ -174,7 +147,7 @@ async function readReference(file) {
   referenceBusy=true;syncControls();$('reference-file').textContent=file.name;
   $('comparison-message').textContent='正在单独读取原始电子码…';
   try {
-    const result=await readUpload(file,'screen',0,()=>{$('comparison-message').textContent='原始电子码已收到，等待读取结果后比对…';});
+    const result=await readFileLocally(file,'screen',0);
     if(!result.id)throw Error(result.error||'未收到原始电子码的读取记录。');
     showComparison(electronicReference(result,file.name));
   } catch(error) {$('comparison-message').textContent=error.message||'参考读取失败，请稍后重试。';$('comparison-message').className='comparison-message error';}
@@ -216,15 +189,18 @@ $('download-comparison').onclick=()=>{
   const blob=new Blob([JSON.stringify({capture:report,comparison:comparisonRecord},null,2)],{type:'application/json;charset=utf-8'});
   const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`比对记录_${report.id}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
-async function checkConnection() {
-  if(busy||referenceBusy)return;
-  try {
-    const response=await apiFetch('/api/health'); if(!response.ok)throw new Error();
-    $('connection-label').textContent='读取器已连接'; $('dropzone').disabled=false;
-    if(!currentFile)activity('准备好读取','上传一张照片，或一段清晰的短视频。');
-  } catch {
-    $('connection-label').textContent='读取服务尚未连接'; $('dropzone').disabled=true;
-    if(!currentFile)activity('读取器未连接','网站已公开；读取电脑连接后即可上传。','error');
+async function loadReader(){
+  $('dropzone').disabled=true;
+  $('connection-label').textContent='正在加载读取组件…';
+  activity('首次加载读取组件','稍等片刻，加载完成后可直接选择照片或视频。','busy');
+  try{
+    await initialize();ready=true;
+    $('connection-label').textContent='浏览器读取器已就绪';
+    activity('准备好读取','直接选择照片或短视频，文件在当前浏览器中处理。');
+    syncControls();
+  }catch(error){
+    $('connection-label').textContent='组件加载失败';
+    activity('读取组件未加载',error.message||'请刷新页面重试。','error');
   }
 }
-syncControls();checkConnection();setInterval(checkConnection,10000);
+syncControls();loadReader();

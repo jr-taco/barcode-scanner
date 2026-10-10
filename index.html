@@ -6,15 +6,16 @@
   <title>码间 · 条码读取工作台</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./style.css">
-  <script src="./app.js?v=soft-p4-20261009" type="module"></script>
+  <script src="./assets/opencv.js"></script>
+  <script src="./app.js?v=browser-20261009" type="module"></script>
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="./"><span class="brandmark" aria-hidden="true">▥</span> 码间<span class="brand-en">BARCODE READER</span></a>
-    <div class="connection"><i></i><span id="connection-label">连接读取器…</span></div>
+    <div class="connection"><i></i><span id="connection-label">正在加载读取组件…</span></div>
   </header>
   <main>
-    <div class="intro"><div><p class="eyebrow">双层信息读取工作台</p><h1>先读取拍摄文件，再核对原始信息。</h1><p class="lead">独立读出公共码与隐藏载荷，完成后再提供核对依据。</p></div><span class="local-badge">公开网站 <span aria-hidden="true">↗</span></span></div>
+    <div class="intro"><div><p class="eyebrow">双层信息读取工作台</p><h1>先读取拍摄文件，再核对原始信息。</h1><p class="lead">独立读出公共码与隐藏载荷，完成后再提供核对依据。</p></div><span class="local-badge">浏览器内读取 <span aria-hidden="true">↗</span></span></div>
     <div class="workspace">
       <section class="input-panel" aria-labelledby="input-title">
         <div class="section-heading"><h2 id="input-title"><span class="step">01</span> 上传拍摄文件</h2><span class="quiet">照片或短视频</span></div>
@@ -22,9 +23,9 @@
         <input id="file-input" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.heic,.heif,.mov,.mp4,.m4v" hidden>
         <button id="dropzone" class="dropzone" type="button"><span class="upload-icon" aria-hidden="true">↑</span><strong>选择照片或视频</strong><span>也可以把文件拖到这里</span><small>PNG / JPEG / HEIC · MOV / MP4</small></button>
         <div id="preview-area" class="preview-area" hidden><div class="preview-stage"><img id="preview" alt="上传条码的预览"><span id="preview-tag">原图预览</span></div><div class="file-row"><div><strong id="filename"></strong><span id="filesize"></span></div><button id="replace" class="text-button" type="button">更换文件</button></div><div class="file-actions"><button id="rotate" class="secondary-button" type="button">↶ 旋转 90°</button><button id="reread" class="primary-button" type="button">重新读取 <span aria-hidden="true">→</span></button></div></div>
-        <p class="upload-hint">让数字朝上，保留完整条高和两侧白边。短视频全段保持同一枚静态条码，最长 30 秒、最大 90 MB。</p>
+        <p class="upload-hint">让数字朝上，保留完整条高和两侧白边。短视频全段保持同一枚静态条码，最长 30 秒、最大 90 MB；HEIC/MOV 是否可读取决于浏览器，推荐原尺寸 PNG/JPEG 或兼容 MP4。</p>
         <div class="sample-row" hidden><span>先试试看</span><button type="button" id="encoded-demo">编码样例 ↗</button><button type="button" id="clean-demo">无载荷样例 ↗</button></div>
-        <div class="privacy-note"><span aria-hidden="true">◈</span><p>文件经网站加密传输，由运营者的读取电脑处理。原文件和结果会保留，运营者可查看；其他访客不能浏览你的记录。</p></div>
+        <div class="privacy-note"><span aria-hidden="true">◈</span><p>照片、视频和核对内容在你的浏览器中处理，不上传到服务器。需要保留结果时，请下载读取记录。</p></div>
       </section>
       <section class="results-panel" aria-labelledby="results-title">
         <div class="section-heading"><h2 id="results-title"><span class="step">02</span> 读取结果</h2><span class="quiet" id="read-duration">等待上传</span></div>
@@ -33,7 +34,7 @@
         <article class="result-card hidden-card"><div class="card-top"><div><span class="card-index">HIDDEN</span><h3>隐藏载荷</h3></div><span class="status-pill" id="hidden-status">待上传</span></div><div id="hidden-value" class="hidden-value placeholder">等待原图</div><p id="hidden-description" class="card-description">读取本系统条码中的 56 位有效数据。</p><div id="hidden-meta" class="hidden-meta" hidden><span>十六进制 · 7 字节</span><span id="correction-count"></span></div><div id="hidden-text" class="decoded-text" hidden></div><button id="copy-hidden" class="text-button" type="button" hidden>复制隐藏候选</button><div class="candidate-note">隐藏结果仅为解码候选，存在性确认尚未校准。</div></article>
         <article id="fusion-card" class="fusion-card" hidden><div><strong>固定五帧 · 原硬判决</strong><span id="fusion-status"></span></div><code id="fusion-value"></code><p id="fusion-description"></p></article>
         <article id="soft-card" class="fusion-card" hidden><div><strong>固定五帧 · 新软判决</strong><span id="soft-status"></span></div><code id="soft-value"></code><p id="soft-description"></p></article>
-        <div class="result-actions"><button id="download" class="secondary-button" type="button" disabled>↓ 下载读取记录</button><span id="record-label">每次上传独立保存</span></div>
+        <div class="result-actions"><button id="download" class="secondary-button" type="button" disabled>↓ 下载读取记录</button><span id="record-label">下载后保存本次记录</span></div>
         <details id="technical" hidden><summary>查看读取详情</summary><pre id="technical-content"></pre></details>
       </section>
     </div>
@@ -41,7 +42,7 @@
       <div class="section-heading"><h2 id="comparison-title"><span class="step">03</span> 核对原始信息</h2><span class="quiet">读取完成后进行</span></div>
       <p id="comparison-wait" class="comparison-intro">先上传拍摄文件。读取完成后，可上传对应的原始电子码，或填写当初 encode 的内容。</p>
       <div id="comparison-controls" hidden>
-        <p class="comparison-intro">拍摄读取结果已保存。任选一种依据核对；参考资料不会参与拍摄文件的定位、纠错或选帧。</p>
+        <p class="comparison-intro">拍摄读取已完成。任选一种依据核对；参考资料不会参与拍摄文件的定位、纠错或选帧。</p>
         <div class="reference-options">
           <div class="reference-option"><h3>上传原始电子码</h3><p>选择拍摄对象对应的原始电子图片，推荐无损 PNG。它会作为另一条记录单独读取。</p><input id="reference-input" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.heic,.heif" hidden><button id="reference-upload" class="secondary-button" type="button">选择原始电子码</button><p id="reference-file" class="reference-hint">只上传参考图片，不需要重新上传拍摄文件。</p></div>
           <div class="reference-option"><h3>填写已知编码内容</h3><p>从生成码时保存的原始记录填写，不要从上方读取结果复制。</p><label for="expected-ean">原始公共码（EAN-13，可选）</label><input id="expected-ean" type="text" inputmode="numeric" maxlength="13" placeholder="例如 1234567890128"><label for="expected-format">隐藏内容格式</label><select id="expected-format"><option value="hex">十六进制 · 14 位</option><option value="text">原始文本 · 最多 7 字节</option><option value="blank">无隐藏载荷 · 空白对照</option></select><label for="expected-message">当初写入的隐藏内容</label><input id="expected-message" type="text" autocomplete="off" placeholder="例如 0123456789abcd"><p id="expected-hint" class="reference-hint">必须与实际写入的 7 字节一致；这里填写的内容只在当前浏览器用于比对。</p><button id="compare-known" class="secondary-button" type="button">核对已知编码内容</button></div>
